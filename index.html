@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workstation Asset Library</title>
+<style>
+  :root{
+    --bg:#0b0b0e; --panel:#121216; --panel2:#17171c;
+    --fg:#e9e9ee; --muted:#8a8a96; --border:#24242c;
+    --accent:#7c9cff; --ok:#39c07a; --warn:#e0a338;
+    --font:ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5}
+  .app{display:grid;grid-template-columns:270px 1fr;min-height:100vh}
+  aside{background:var(--panel);border-right:1px solid var(--border);padding:20px;position:sticky;top:0;height:100vh;overflow:auto}
+  h1{font-size:15px;margin:0 0 2px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px;margin:0 0 20px}
+  .nav{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:2px}
+  .nav button{
+    width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;
+    background:transparent;border:0;color:var(--fg);font:inherit;text-align:left;
+    padding:8px 10px;border-radius:8px;cursor:pointer
+  }
+  .nav button:hover{background:var(--panel2)}
+  .nav button.on{background:#1d2440;color:#cfd9ff}
+  .nav .n{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .stat{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+  .stat div{display:flex;justify-content:space-between;padding:3px 0}
+  .stat b{color:var(--fg);font-family:var(--mono);font-weight:500}
+  main{padding:22px 26px;min-width:0}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  input[type=search],select{
+    background:var(--panel);border:1px solid var(--border);color:var(--fg);
+    border-radius:8px;height:36px;padding:0 12px;font:inherit;font-size:13px;outline:none
+  }
+  input[type=search]{flex:1;min-width:200px}
+  input[type=search]:focus,select:focus{border-color:var(--accent)}
+  .desc{color:var(--muted);font-size:12.5px;margin:0 0 14px;max-width:74ch}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:500;color:var(--muted);font-size:11px;
+     text-transform:uppercase;letter-spacing:.07em;padding:8px 10px;border-bottom:1px solid var(--border);
+     position:sticky;top:0;background:var(--bg);cursor:pointer;user-select:none;white-space:nowrap}
+  th:hover{color:var(--fg)}
+  td{padding:7px 10px;border-bottom:1px solid #1a1a20;vertical-align:top}
+  tr:hover td{background:var(--panel)}
+  .name{font-weight:500}
+  .path{font-family:var(--mono);font-size:11.5px;color:var(--muted);word-break:break-all}
+  .tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10.5px;
+       font-family:var(--mono);background:#1c1c24;color:var(--muted);white-space:nowrap}
+  .tag.code{background:#14251c;color:var(--ok)}
+  .size{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
+  .more{margin:16px 0 40px}
+  .more button{background:var(--panel);border:1px solid var(--border);color:var(--fg);
+    border-radius:8px;height:34px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer}
+  .more button:hover{border-color:var(--accent)}
+  .empty{color:var(--muted);padding:40px 0;text-align:center}
+  .sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:6px}
+  .set{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .set .h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .set .t{font-weight:600;font-size:13px}
+  .set .c{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .set .s{font-family:var(--mono);font-size:10.5px;color:#6a6a78;margin-top:6px;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media(max-width:820px){.app{grid-template-columns:1fr}aside{position:static;height:auto}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Workstation Asset Library</h1>
+    <p class="sub">Indexed corpus · read-only</p>
+    <ul class="nav" id="nav"></ul>
+    <div class="stat" id="stat"></div>
+  </aside>
+  <main>
+    <div class="bar">
+      <input type="search" id="q" placeholder="Filter by name, path, group…">
+      <select id="group"><option value="">all groups</option></select>
+      <select id="sort">
+        <option value="name">sort: name</option>
+        <option value="bytes">sort: size</option>
+        <option value="group">sort: group</option>
+      </select>
+    </div>
+    <p class="desc" id="desc"></p>
+    <div id="view"></div>
+  </main>
+</div>
+<script>
+const PAGE = 300;
+let manifest = null, areaId = null, shown = PAGE;
+
+const $ = s => document.querySelector(s);
+const fmt = n => n >= 1e9 ? (n/1e9).toFixed(2)+' GB'
+              : n >= 1e6 ? (n/1e6).toFixed(1)+' MB'
+              : n >= 1e3 ? (n/1e3).toFixed(0)+' KB' : n+' B';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function renderNav(){
+  const t = manifest.totals;
+  $('#stat').innerHTML = `
+    <div><span>entries</span><b>${t.entries.toLocaleString()}</b></div>
+    <div><span>files walked</span><b>${t.files.toLocaleString()}</b></div>
+    <div><span>indexed size</span><b>${t.bytesHuman}</b></div>`;
+  $('#nav').innerHTML = manifest.areas.map(a => `
+    <li><button data-id="${a.id}" class="${a.id===areaId?'on':''}">
+      <span>${esc(a.label)}</span><span class="n">${a.count.toLocaleString()}</span>
+    </button></li>`).join('');
+  $('#nav').querySelectorAll('button').forEach(b =>
+    b.onclick = () => { areaId = b.dataset.id; shown = PAGE; renderNav(); render(); });
+}
+
+function current(){ return manifest.areas.find(a => a.id === areaId); }
+
+function render(){
+  const a = current();
+  $('#desc').textContent = a.description + (a.iconTotal ? ` Total icon files: ${a.iconTotal.toLocaleString()}.` : '');
+  const q = $('#q').value.trim().toLowerCase();
+  const gsel = $('#group');
+  const groups = [...new Set((a.items||[]).map(i => i.group))].filter(Boolean).sort();
+  const keep = gsel.value;
+  gsel.innerHTML = '<option value="">all groups</option>' +
+    groups.map(g => `<option ${g===keep?'selected':''}>${esc(g)}</option>`).join('');
+
+  if (a.id === 'icons') { renderSets(a, q); return; }
+
+  let items = (a.items || []).filter(i =>
+    (!q || (i.name + ' ' + i.file + ' ' + (i.group||'')).toLowerCase().includes(q)) &&
+    (!keep || i.group === keep));
+
+  const sortBy = $('#sort').value;
+  items.sort((x, y) => sortBy === 'bytes' ? y.bytes - x.bytes
+    : sortBy === 'group' ? (x.group||'').localeCompare(y.group||'') || x.name.localeCompare(y.name)
+    : x.name.localeCompare(y.name));
+
+  const slice = items.slice(0, shown);
+  if (!items.length) { $('#view').innerHTML = '<div class="empty">nothing matches</div>'; return; }
+
+  $('#view').innerHTML = `
+    <table><thead><tr>
+      <th>name</th><th>group</th><th>path</th><th class="size">size</th>
+    </tr></thead><tbody>
+    ${slice.map(i => `<tr>
+      <td class="name">${esc(i.name)}</td>
+      <td><span class="tag ${i.code?'code':''}">${esc(i.group || '—')}</span></td>
+      <td class="path">${esc(i.file)}</td>
+      <td class="size">${i.bytes ? fmt(i.bytes) : '—'}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div class="more">
+      <button id="more">showing ${slice.length.toLocaleString()} of ${items.length.toLocaleString()} — load more</button>
+    </div>`;
+  const more = $('#more');
+  if (more) more.onclick = () => { shown += PAGE; render(); };
+}
+
+function renderSets(a, q){
+  const sets = (a.sets||[]).filter(s => !q || s.name.toLowerCase().includes(q));
+  if (!sets.length) { $('#view').innerHTML = '<div class="empty">nothing matches</div>'; return; }
+  $('#view').innerHTML = `<div class="sets">${sets.map(s => `
+    <div class="set">
+      <div class="h"><span class="t">${esc(s.name)}</span><span class="c">${s.count.toLocaleString()}</span></div>
+      <div class="c">${fmt(s.bytes)}</div>
+      <div class="s">${esc(s.sample.slice(0,5).join(' · '))}</div>
+    </div>`).join('')}</div>`;
+}
+
+['q','group','sort'].forEach(id => document.getElementById(id).addEventListener('input', () => { shown = PAGE; render(); }));
+
+fetch('manifest.json').then(r => r.json()).then(m => {
+  manifest = m;
+  areaId = m.areas[0].id;
+  renderNav(); render();
+});
+</script>
+</body>
+</html>
