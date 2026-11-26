@@ -1,7 +1,6 @@
 name: publish
 on:
   push: { branches: [main] }
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -14,15 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  publish:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v5
+        with: { path: "." }
+
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v5
-        with: { path: . }
+      # the artifacts API is eventually consistent; deploy can race a fresh upload
+      - run: sleep 15
       - id: deployment
         uses: actions/deploy-pages@v5
